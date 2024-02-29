@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http" // 核心件，用于各种http请求
 	"os"
 	"path/filepath"
@@ -138,9 +137,9 @@ func listFilesHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	// 使用IO工具，读取路径
-	files, err := ioutil.ReadDir(uploadPath)
+	files, err := os.ReadDir(uploadPath)
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		http.Error(writer, errorInternal, http.StatusInternalServerError)
 		return
 	}
 
@@ -171,7 +170,7 @@ func viewFileHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	// 读取文件内容
-	content, err := ioutil.ReadFile(fileName)
+	content, err := os.ReadFile(fileName)
 	if err != nil {
 		http.Error(writer, errorInternal, http.StatusInternalServerError) //可能有多种原因
 		return
