@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http" // 核心件，用于各种http请求
 	"os"
@@ -25,8 +26,8 @@ const (
 )
 
 func main() {
-	// 类似springboot中的controller层
 
+	// 类似springboot中的controller层
 	http.HandleFunc(RouteUpload, uploadFileHandler)     // 上传文件
 	http.HandleFunc(RouteDownload, downloadFileHandler) // 处理文件下载
 	http.HandleFunc(RouteFiles, listFilesHandler)       // 列出文件
@@ -55,6 +56,24 @@ func checkRequestMethod(writer http.ResponseWriter, request *http.Request, expec
 	return true
 }
 
+// 一个辅助函数，用于将响应转为json格式
+// 这里使用了空接口，类似泛型？用于接收任何类型的值，在这里方便转为json
+func sendJSONResponse(writer http.ResponseWriter, status int, payload interface{}) {
+	response, err := json.Marshal(payload)
+	if err != nil {
+		http.Error(writer, errorInternal, http.StatusInternalServerError)
+		return
+	}
+	// 设置响应头
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(status)
+	// 写入json回包
+	_, err = writer.Write(response)
+	if err != nil {
+		fmt.Printf("Error writing JSON response: %v\n", err)
+	}
+}
+
 // 上传文件功能
 // 一般来说，接口可以直接调用，然而结构体要用地址值，以免直接调用会导致每次使用调用结构体
 // 通过使用指针（即*http.Request），可以确保所有函数都使用相同的请求实例。
@@ -68,13 +87,13 @@ func uploadFileHandler(writer http.ResponseWriter, request *http.Request) {
 	// 解析上传的文件
 	err := request.ParseMultipartForm(10 << 20) // 表示10*2^20，也就是10MB，这里表示限制上传大小10MB
 	if err != nil {
-		http.Error(writer, errorBadRequest, http.StatusBadRequest)
+		sendJSONResponse(writer, http.StatusBadRequest, map[string]string{"error": errorBadRequest})
 		return
 	}
 
 	file, handler, err := request.FormFile("myFile") // file为文件本身，handler表示这个文件的一些元数据,如文件名
 	if err != nil {
-		http.Error(writer, errorBadRequest, http.StatusBadRequest)
+		sendJSONResponse(writer, http.StatusBadRequest, map[string]string{"error": errorBadRequest})
 		return
 	}
 
@@ -84,21 +103,18 @@ func uploadFileHandler(writer http.ResponseWriter, request *http.Request) {
 	filePath := filepath.Join(uploadPath, handler.Filename) // 自动处理字段为路径
 	destination, err := os.Create(filePath)                 // 创建这个路径的文件
 	if err != nil {
-		http.Error(writer, errorInternal, http.StatusInternalServerError) // 这里如果出现上传错误，是服务器，也就是500
+		sendJSONResponse(writer, http.StatusInternalServerError, map[string]string{"error": errorInternal}) // 这里如果出现上传错误，是服务器，也就是500
 		return
 	}
 	defer destination.Close() // 关闭路径
 
 	_, err = destination.ReadFrom(file) // 表示将file文件流复制给destination
 	if err != nil {
-		http.Error(writer, errorInternal, http.StatusInternalServerError)
+		sendJSONResponse(writer, http.StatusInternalServerError, map[string]string{"error": errorInternal})
 		return
 	}
 
-	if _, err := fmt.Fprintf(writer, "File uploaded successfully: %s", filePath); err != nil {
-		http.Error(writer, errorInternal, http.StatusInternalServerError)
-		return
-	}
+	sendJSONResponse(writer, http.StatusOK, map[string]string{"message": "File uploaded successfully", "filePath": filePath})
 
 }
 
@@ -116,7 +132,7 @@ func downloadFileHandler(writer http.ResponseWriter, request *http.Request) {
 	// 检查文件是否存在
 	_, err := os.Stat(filePath)
 	if err != nil {
-		http.NotFound(writer, request)
+		sendJSONResponse(writer, http.StatusNotFound, map[string]string{"error": errorStateNotFound})
 		return
 	}
 	// 设置相应的头信息
@@ -139,18 +155,17 @@ func listFilesHandler(writer http.ResponseWriter, request *http.Request) {
 	// 使用IO工具，读取路径
 	files, err := os.ReadDir(uploadPath)
 	if err != nil {
-		http.Error(writer, errorInternal, http.StatusInternalServerError)
+		sendJSONResponse(writer, http.StatusInternalServerError, map[string]string{"error": errorInternal})
 		return
 	}
 
-	// 一个循环遍历
+	var fileNames []string
+	// 将所有的文件名放在一个array里
 	for _, file := range files {
-		if _, err := fmt.Fprintf(writer, "%s\n", file.Name()); err != nil {
-			fmt.Printf("Error writing file name to response: %v\n", err)      // 记录日志
-			http.Error(writer, errorInternal, http.StatusInternalServerError) // 向用户发送通用错误消息
-			return
-		}
+		fileNames = append(fileNames, file.Name())
 	}
+	// json文件中放所有的文件名
+	sendJSONResponse(writer, http.StatusOK, map[string]interface{}{"files": fileNames})
 }
 
 // 查看特定文件内容和元数据
@@ -165,22 +180,27 @@ func viewFileHandler(writer http.ResponseWriter, request *http.Request) {
 	// 获取文件元数据
 	fileStat, err := os.Stat(fileName)
 	if err != nil {
-		http.Error(writer, errorStateNotFound, http.StatusNotFound) //明确表示文件不存在
+		sendJSONResponse(writer, http.StatusNotFound, map[string]string{"error": errorStateNotFound}) //明确表示文件不存在
 		return
 	}
 
 	// 读取文件内容
 	content, err := os.ReadFile(fileName)
 	if err != nil {
-		http.Error(writer, errorInternal, http.StatusInternalServerError) //可能有多种原因
+		sendJSONResponse(writer, http.StatusInternalServerError, map[string]string{"error": errorInternal}) //可能有多种原因
 		return
 	}
 
-	if _, err := fmt.Fprintf(writer, "Name: %s\nSize: %d\nModTime: %s\nContent:\n%s",
-		fileStat.Name(), fileStat.Size(), fileStat.ModTime(), string(content)); err != nil {
-		fmt.Println("Error writing file details to response:", err) // 记录日志
-		return
+	// 做一个map，key为类型，value为该类型内容，因为类型多样，所以用空接口
+	fileDetails := map[string]interface{}{
+		"name":    fileStat.Name(),
+		"size":    fmt.Sprintf("%d bytes", fileStat.Size()), // fmt.Sprintf，类似java中的format
+		"modTime": fileStat.ModTime(),
+		"content": string(content),
 	}
+
+	// 将json写入回包
+	sendJSONResponse(writer, http.StatusOK, fileDetails)
 
 }
 
