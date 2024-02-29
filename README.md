@@ -49,6 +49,13 @@
    4. **使用Gorilla Mux框架**
        - 与Gin框架类似，Gorilla Mux同样是一个流行的Web框架。不过，它在某些使用场景下与Gin有所不同。
 
+7. **interface{} in Go**
+
+   - 在Go中，`interface{}`被称为"空接口"。它没有定义任何方法，因此所有的Go类型都至少实现了这个接口。这使得`interface{}`可以用来表示任何类型的值，类似于Java中的`Object`类，它是所有Java类的父类。
+
+   - 这有点像Java的泛型，在转化JSON的辅助函数中非常有用，可以将接收的任何类型的参数转化为JSON格式。
+
+
 # 踩的坑
 
 ### 坑1：FormFile中的Key名称
