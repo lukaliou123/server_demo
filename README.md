@@ -35,6 +35,19 @@
     - **函数签名**
         - `func Fprintf(w io.Writer, format string, a ...interface{}) (n int, err error)`
         - `w` 是一个实现了 `io.Writer` 接口的对象，它表示数据要写入的目标。
+      
+6. **服务端判断HTTP请求类型的几种方法**
+   1. **使用辅助函数**
+       - 这种方法较为简单。它通过先判断请求的类型是否是需要的，然后再继续处理。在本次项目中，就采用了这种方法。
+
+   2. **使用HTTP包的Method字段**
+       - 如通过检查 `r.Method != http.MethodPost` 来判断。这种方法直接但可能不够灵活，因为需要为每种请求类型重复写判断逻辑。
+
+   3. **使用Gin框架**
+       - Gin是一个常用的Web框架，常用于构建HTTP服务器。
+
+   4. **使用Gorilla Mux框架**
+       - 与Gin框架类似，Gorilla Mux同样是一个流行的Web框架。不过，它在某些使用场景下与Gin有所不同。
 
 # 踩的坑
 
