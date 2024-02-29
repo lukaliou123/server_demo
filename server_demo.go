@@ -21,13 +21,10 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
-/*
-*
-上传文件功能
-一般来说，接口可以直接调用，然而结构体要用指针，以免直接调用会导致每次使用调用结构体
-通过使用指针（即*http.Request），可以确保所有函数都使用相同的请求实例。
-这对于修改请求的状态或内容是必要的，如设置请求头、改变请求的URL等。
-*/
+// 上传文件功能
+// 一般来说，接口可以直接调用，然而结构体要用地址值，以免直接调用会导致每次使用调用结构体
+// 通过使用指针（即*http.Request），可以确保所有函数都使用相同的请求实例。
+// 这对于修改请求的状态或内容是必要的，如设置请求头、改变请求的URL等
 func uploadFileHandler(writer http.ResponseWriter, request *http.Request) {
 	if request.Method == "POST" {
 		// 解析上传的文件
