@@ -18,7 +18,12 @@ func main() {
 	http.HandleFunc("/file/", viewFileHandler)         // 查看特定文件的详情
 
 	fmt.Println("Server started at :8080")
-	http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		fmt.Printf("HTTP server failed to start: %v\n", err)
+		os.Exit(1) // 无法连接服务器时，直接退出
+	}
+
 }
 
 // 上传文件功能
@@ -30,13 +35,13 @@ func uploadFileHandler(writer http.ResponseWriter, request *http.Request) {
 		// 解析上传的文件
 		err := request.ParseMultipartForm(10 << 20) // 表示10*2^20，也就是10MB，这里表示限制上传大小10MB
 		if err != nil {
-			http.Error(writer, err.Error(), http.StatusBadRequest)
+			http.Error(writer, "Bad request", http.StatusBadRequest)
 			return
 		}
 
 		file, handler, err := request.FormFile("myFile") // file为文件本身，handler表示这个文件的一些元数据,如文件名
 		if err != nil {
-			http.Error(writer, err.Error(), http.StatusBadRequest)
+			http.Error(writer, "Bad request", http.StatusBadRequest)
 			return
 		}
 
@@ -46,21 +51,29 @@ func uploadFileHandler(writer http.ResponseWriter, request *http.Request) {
 		filePath := filepath.Join(uploadPath, handler.Filename) // 自动处理字段为路径
 		destination, err := os.Create(filePath)                 // 创建这个路径的文件
 		if err != nil {
-			http.Error(writer, err.Error(), http.StatusInternalServerError) // 这里如果出现上传错误，是服务器，也就是500
+			http.Error(writer, "Internal server error", http.StatusInternalServerError) // 这里如果出现上传错误，是服务器，也就是500
+			return
 		}
 		defer destination.Close() // 关闭路径
 
 		_, err = destination.ReadFrom(file) // 表示将file文件流复制给destination
 		if err != nil {
-			http.Error(writer, err.Error(), http.StatusInternalServerError)
+			http.Error(writer, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
-		fmt.Fprintf(writer, "File uploaded successfully: %s", filePath)
+		if _, err := fmt.Fprintf(writer, "File uploaded successfully: %s", filePath); err != nil {
+			http.Error(writer, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 
 	} else {
 		writer.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(writer, "Only POST method is allowed") // Fprintf将一串字符写进一个io.writer接口中
+		if _, err := fmt.Fprintf(writer, "Only POST method is allowed"); err != nil {
+			fmt.Printf("Error writing to response method error: %v\n", err) // 记录日志
+			http.Error(writer, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -99,7 +112,11 @@ func listFilesHandler(writer http.ResponseWriter, request *http.Request) {
 
 	// 一个循环遍历
 	for _, file := range files {
-		fmt.Fprintf(writer, "%s\n", file.Name())
+		if _, err := fmt.Fprintf(writer, "%s\n", file.Name()); err != nil {
+			fmt.Printf("Error writing file name to response: %v\n", err)                // 记录日志
+			http.Error(writer, "Internal server error", http.StatusInternalServerError) // 向用户发送通用错误消息
+			return
+		}
 	}
 }
 
@@ -122,8 +139,12 @@ func viewFileHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(writer, "Name: %s\nSize: %d\nModTime: %s\nContent:\n%s",
-		fileStat.Name(), fileStat.Size(), fileStat.ModTime(), string(content))
+	if _, err := fmt.Fprintf(writer, "Name: %s\nSize: %d\nModTime: %s\nContent:\n%s",
+		fileStat.Name(), fileStat.Size(), fileStat.ModTime(), string(content)); err != nil {
+		fmt.Println("Error writing file details to response:", err) // 记录日志
+		return
+	}
+
 }
 
 func init() {
