@@ -10,9 +10,7 @@ import (
 
 const (
 	// controller层路径
-	RouteUpload   = "/upload"
 	RouteDownload = "/download/"
-	RouteFiles    = "/files"
 	RouteFile     = "/file/"
 
 	// 本地储存文件路径
@@ -28,10 +26,10 @@ const (
 func main() {
 
 	// 类似springboot中的controller层
-	http.HandleFunc(RouteUpload, uploadFileHandler)     // 上传文件
-	http.HandleFunc(RouteDownload, downloadFileHandler) // 处理文件下载
-	http.HandleFunc(RouteFiles, listFilesHandler)       // 列出文件
-	http.HandleFunc(RouteFile, viewFileHandler)         // 查看特定文件的详情
+	http.HandleFunc("/upload", uploadFileHandler)      // 上传文件
+	http.HandleFunc("/download/", downloadFileHandler) // 处理文件下载
+	http.HandleFunc("/files", listFilesHandler)        // 列出文件
+	http.HandleFunc("/file/", viewFileHandler)         // 查看特定文件的详情
 
 	fmt.Println("Server started at :8080")
 	err := http.ListenAndServe(":8080", nil)
