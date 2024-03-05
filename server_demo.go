@@ -172,8 +172,11 @@ func viewFileHandler(writer http.ResponseWriter, request *http.Request) {
 	if !checkRequestMethod(writer, request, "GET") {
 		return
 	}
-	// 查看文件名字
-	fileName := request.URL.Path[len(RouteFile):]
+	// 只要文件名字
+	filePath := request.URL.Path[len(RouteFile):]
+
+	// 把文件名字和路径结合
+	fileName := filepath.Join(uploadPath, filePath)
 
 	// 获取文件元数据
 	fileStat, err := os.Stat(fileName)
