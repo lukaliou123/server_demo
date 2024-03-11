@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http" // 核心件，用于各种http请求
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const (
@@ -40,58 +42,82 @@ func main() {
 
 }
 
+// 错误输出信息
+type ErrResponse struct {
+	Error string `json:"error"`
+}
+
 // 一个辅助函数，用来判断是否符合需要的请求类型
-func checkRequestMethod(writer http.ResponseWriter, request *http.Request, expectedMethod string) bool {
-	if request.Method != expectedMethod {
-		writer.WriteHeader(http.StatusMethodNotAllowed)
-		_, err := fmt.Fprintf(writer, errorMethodNotAllowed)
-		if err != nil {
-			http.Error(writer, errorInternal, http.StatusInternalServerError)
-			return false
-		}
+func checkRequestMethod(w http.ResponseWriter, r *http.Request, expectedMethod string) bool {
+
+	if r.Method == expectedMethod {
+		return true
+	}
+
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	_, err := fmt.Fprintf(w, errorMethodNotAllowed)
+	if err != nil {
+		log.Fatalf("Check Method failed, error: %s", err)
+		//http.Error(w, errorInternal, http.StatusInternalServerError)
 		return false
 	}
-	return true
+	return false
+
 }
 
 // 一个辅助函数，用于将响应转为json格式
 // 这里使用了空接口，类似泛型？用于接收任何类型的值，在这里方便转为json
-func sendJSONResponse(writer http.ResponseWriter, status int, payload interface{}) {
+func sendJSONResponse(w http.ResponseWriter, status int, payload any) {
 	response, err := json.Marshal(payload)
 	if err != nil {
-		http.Error(writer, errorInternal, http.StatusInternalServerError)
+		http.Error(w, errorInternal, http.StatusInternalServerError)
 		return
 	}
 	// 设置响应头
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(status)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	// 写入json回包
-	_, err = writer.Write(response)
+	_, err = w.Write(response)
 	if err != nil {
 		fmt.Printf("Error writing JSON response: %v\n", err)
 	}
 }
 
+type UploadResponse struct {
+	Message  string `json:"msg"`
+	FilePath string `json:"filePath"`
+}
+
+type FilesListResponse struct {
+	Files []string `json:"files"`
+}
+
+type FileDetailsResponse struct {
+	Name    string `json:"name"`
+	Size    int64  `json:"sizeInBytes"`
+	ModTime string `json:"modTime"`
+}
+
 // 上传文件功能
 // 一般来说，接口可以直接调用，然而结构体要用地址值，以免直接调用会导致每次使用调用结构体
-// 通过使用指针（即*http.Request），可以确保所有函数都使用相同的请求实例。
+// 通过使用指针（即*http.Request），可以确保所有函数都使用相同请求实例。
 // 这对于修改请求的状态或内容是必要的，如设置请求头、改变请求的URL等
-func uploadFileHandler(writer http.ResponseWriter, request *http.Request) {
+func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
 	// 只接受POST请求
-	if !checkRequestMethod(writer, request, "POST") {
+	if !checkRequestMethod(w, r, "POST") {
 		return
 	}
 
 	// 解析上传的文件
-	err := request.ParseMultipartForm(10 << 20) // 表示10*2^20，也就是10MB，这里表示限制上传大小10MB
+	err := r.ParseMultipartForm(10 << 20) // 表示10*2^20，也就是10MB，这里表示限制上传大小10MB
 	if err != nil {
-		sendJSONResponse(writer, http.StatusBadRequest, map[string]string{"error": errorBadRequest})
+		sendJSONResponse(w, http.StatusBadRequest, ErrResponse{Error: errorBadRequest})
 		return
 	}
 
-	file, handler, err := request.FormFile("myFile") // file为文件本身，handler表示这个文件的一些元数据,如文件名
+	file, handler, err := r.FormFile("myFile") // file为文件本身，handler表示这个文件的一些元数据,如文件名
 	if err != nil {
-		sendJSONResponse(writer, http.StatusBadRequest, map[string]string{"error": errorBadRequest})
+		sendJSONResponse(w, http.StatusBadRequest, ErrResponse{Error: errorBadRequest})
 		return
 	}
 
@@ -101,59 +127,64 @@ func uploadFileHandler(writer http.ResponseWriter, request *http.Request) {
 	filePath := filepath.Join(uploadPath, handler.Filename) // 自动处理字段为路径
 	destination, err := os.Create(filePath)                 // 创建这个路径的文件
 	if err != nil {
-		sendJSONResponse(writer, http.StatusInternalServerError, map[string]string{"error": errorInternal}) // 这里如果出现上传错误，是服务器，也就是500
+		sendJSONResponse(w, http.StatusInternalServerError, ErrResponse{Error: errorInternal}) // 这里如果出现上传错误，是服务器，也就是500
 		return
 	}
 	defer destination.Close() // 关闭路径
 
 	_, err = destination.ReadFrom(file) // 表示将file文件流复制给destination
 	if err != nil {
-		sendJSONResponse(writer, http.StatusInternalServerError, map[string]string{"error": errorInternal})
+		sendJSONResponse(w, http.StatusInternalServerError, ErrResponse{Error: errorInternal})
 		return
 	}
 
-	sendJSONResponse(writer, http.StatusOK, map[string]string{"message": "File uploaded successfully", "filePath": filePath})
+	response := UploadResponse{
+		Message:  "File uploaded successfully",
+		FilePath: filePath,
+	}
+
+	sendJSONResponse(w, http.StatusOK, response)
 
 }
 
 // 下载文件
-func downloadFileHandler(writer http.ResponseWriter, request *http.Request) {
+func downloadFileHandler(w http.ResponseWriter, r *http.Request) {
 	// 只接受GET请求
-	if !checkRequestMethod(writer, request, "GET") {
+	if !checkRequestMethod(w, r, "GET") {
 		return
 	}
 	// 寻找代码名,这里是一个切片操作，得到路径后的名字
-	fileName := request.URL.Path[len(RouteDownload):]
+	fileName := r.URL.Path[len(RouteDownload):]
 	// 构成完整的路径，在服务器中或者上传路径的完整路径名
 	filePath := filepath.Join(uploadPath, fileName)
 
 	// 检查文件是否存在
 	_, err := os.Stat(filePath)
 	if err != nil {
-		sendJSONResponse(writer, http.StatusNotFound, map[string]string{"error": errorStateNotFound})
+		sendJSONResponse(w, http.StatusNotFound, ErrResponse{Error: errorStateNotFound})
 		return
 	}
 	// 设置相应的头信息
 	// attachment指下载，并规定下载下来的名字
-	writer.Header().Set("Content-Disposition", "attachment; filename="+fileName)
+	w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
 	// octet-stream指规定文件类型为二进制数据，方便io传输
-	writer.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Type", "application/octet-stream")
 
 	// 发送文件
-	http.ServeFile(writer, request, filePath)
+	http.ServeFile(w, r, filePath)
 
 }
 
 // 列出所有文件
-func listFilesHandler(writer http.ResponseWriter, request *http.Request) {
+func listFilesHandler(w http.ResponseWriter, r *http.Request) {
 	// 只接受GET请求
-	if !checkRequestMethod(writer, request, "GET") {
+	if !checkRequestMethod(w, r, "GET") {
 		return
 	}
 	// 使用IO工具，读取路径
 	files, err := os.ReadDir(uploadPath)
 	if err != nil {
-		sendJSONResponse(writer, http.StatusInternalServerError, map[string]string{"error": errorInternal})
+		sendJSONResponse(w, http.StatusInternalServerError, ErrResponse{Error: errorInternal})
 		return
 	}
 
@@ -162,18 +193,22 @@ func listFilesHandler(writer http.ResponseWriter, request *http.Request) {
 	for _, file := range files {
 		fileNames = append(fileNames, file.Name())
 	}
+
+	response := FilesListResponse{
+		Files: fileNames,
+	}
 	// json文件中放所有的文件名
-	sendJSONResponse(writer, http.StatusOK, map[string]interface{}{"files": fileNames})
+	sendJSONResponse(w, http.StatusOK, response)
 }
 
-// 查看特定文件内容和元数据
-func viewFileHandler(writer http.ResponseWriter, request *http.Request) {
+// 查看特定文件元数据
+func viewFileHandler(w http.ResponseWriter, r *http.Request) {
 	// 只接受GET请求
-	if !checkRequestMethod(writer, request, "GET") {
+	if !checkRequestMethod(w, r, "GET") {
 		return
 	}
 	// 只要文件名字
-	filePath := request.URL.Path[len(RouteFile):]
+	filePath := r.URL.Path[len(RouteFile):]
 
 	// 把文件名字和路径结合
 	fileName := filepath.Join(uploadPath, filePath)
@@ -181,27 +216,18 @@ func viewFileHandler(writer http.ResponseWriter, request *http.Request) {
 	// 获取文件元数据
 	fileStat, err := os.Stat(fileName)
 	if err != nil {
-		sendJSONResponse(writer, http.StatusNotFound, map[string]string{"error": errorStateNotFound}) //明确表示文件不存在
+		sendJSONResponse(w, http.StatusNotFound, ErrResponse{Error: errorStateNotFound}) //明确表示文件不存在
 		return
 	}
 
-	// 读取文件内容
-	content, err := os.ReadFile(fileName)
-	if err != nil {
-		sendJSONResponse(writer, http.StatusInternalServerError, map[string]string{"error": errorInternal}) //可能有多种原因
-		return
-	}
-
-	// 做一个map，key为类型，value为该类型内容，因为类型多样，所以用空接口
-	fileDetails := map[string]interface{}{
-		"name":    fileStat.Name(),
-		"size":    fmt.Sprintf("%d bytes", fileStat.Size()), // fmt.Sprintf，类似java中的format
-		"modTime": fileStat.ModTime(),
-		"content": string(content),
+	response := FileDetailsResponse{
+		Name:    fileStat.Name(),
+		Size:    fileStat.Size(),
+		ModTime: fileStat.ModTime().Format(time.RFC3339),
 	}
 
 	// 将json写入回包
-	sendJSONResponse(writer, http.StatusOK, fileDetails)
+	sendJSONResponse(w, http.StatusOK, response)
 
 }
 
