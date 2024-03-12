@@ -29,10 +29,10 @@ const (
 func main() {
 
 	// 类似springboot中的controller层
-	http.HandleFunc("/upload", uploadFileHandler)               // 上传文件
-	http.HandleFunc("/download/", downloadFileHandler)          // 处理文件下载
-	http.HandleFunc("/files", handlerWrapper("GET", listFiles)) // 列出文件  也可以添加附加功能，如http.HandleFunc("/files", handlerWrapper(listFiles，“GET”))
-	http.HandleFunc("/file/", handlerWrapper("GET", viewFile))  // 查看特定文件的详情
+	http.HandleFunc("/upload", uploadFileHandler)                      // 上传文件
+	http.HandleFunc("/download/", handlerWrapper("GET", DownloadFile)) // 处理文件下载
+	http.HandleFunc("/files", handlerWrapper("GET", listFiles))        // 列出文件  也可以添加附加功能，如http.HandleFunc("/files", handlerWrapper(listFiles，“GET”))
+	http.HandleFunc("/file/", handlerWrapper("GET", viewFile))         // 查看特定文件的详情
 
 	fmt.Println("Server started at :8080")
 	err := http.ListenAndServe(":8080", nil)
@@ -174,38 +174,22 @@ func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
 	sendJSONResponse(w, http.StatusOK, response)
 
 }
-
-// 下载文件
-func downloadFileHandler(w http.ResponseWriter, r *http.Request) {
-	// 只接受GET请求
-	if !checkRequestMethod(w, r, "GET") {
-		return
-	}
-	// 寻找代码名,这里是一个切片操作，得到路径后的名字
-	fileName := r.URL.Path[len(RouteDownload):]
-	// 构成完整的路径，在服务器中或者上传路径的完整路径名
-	filePath := filepath.Join(uploadPath, fileName)
-
+func DownloadFile(req *DownloadFileReq) (*DownloadResponse, error) {
 	// 检查文件是否存在
-	_, err := os.Stat(filePath)
+	_, err := os.Stat(req.FilePath)
 	if err != nil {
-		sendJSONResponse(w, http.StatusNotFound, ErrResponse{Msg: errorStateNotFound})
-		return
+		return nil, &ErrResponse{Msg: errorInternal}
 	}
-	// 设置相应的头信息
-	// attachment指下载，并规定下载下来的名字
-	w.Header().Set("Content-Disposition", "attachment; filename="+fileName)
-	// octet-stream指规定文件类型为二进制数据，方便io传输
-	w.Header().Set("Content-Type", "application/octet-stream")
 
-	// 发送文件
-	http.ServeFile(w, r, filePath)
+	return &DownloadResponse{
+		Request: req,
+	}, nil
 
 }
 
 // 列出所有文件的单独版本
 func listFiles(req *ListFilesReq) (*ListFilesResponse, error) {
-	files, err := os.ReadDir(uploadPath)
+	files, err := os.ReadDir(req.FilePath)
 	if err != nil {
 		fmt.Printf(err.Error())
 		return nil, &ErrResponse{Msg: errorInternal}
