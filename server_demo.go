@@ -109,6 +109,7 @@ func handlerWrapper[T Requester, U Responder](method string, f func(T) (U, error
 			http.Error(w, errorFailedRequest, http.StatusInternalServerError)
 			return
 		}
+		// 2. biz logic
 		err := req.Decode(r)
 		resp, err := f(req)
 		// 3. 响应

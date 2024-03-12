@@ -55,6 +55,35 @@
 
    - 这有点像Java的泛型，在转化JSON的辅助函数中非常有用，可以将接收的任何类型的参数转化为JSON格式。
 
+8. **类型断言**
+    - 这在泛型中一定大有用处
+    - 在Go语言中，类型断言是一种检查和转换接口变量的类型的操作。它的一般形式如下：
+
+      ```go
+      value, ok := interfaceVariable.(Type)
+      ```
+
+      其中，`interfaceVariable` 是接口类型的变量，`Type` 是你希望断言的具体类型。这个操作会尝试将 `interfaceVariable` 转换为 `Type` 类型的值，赋值给 `value`。
+
+    - 如果转换成功，`value` 将是 `Type` 类型，并且 `ok` 为 `true`。
+    - 如果转换失败（也就是说，`interfaceVariable` 并不包含 `Type` 类型的值），`value` 将是 `Type` 类型的零值，并且 `ok` 为 `false`。
+
+    - 当你在 `handlerWrapper` 中执行以下代码时：
+
+      ```go
+      reqInterface := prototype.CreateInstance()
+      req, ok := reqInterface.(T)
+      ```
+
+      这里尝试将 `reqInterface`（接口类型的变量）断言为泛型类型 `T`。如果断言成功，`ok` 为 `true` 并且 `req` 就可以作为类型 `T` 使用；如果断言失败，`ok` 为 `false`，表示 `reqInterface` 实际上并不是 `T` 类型，这通常是实现错误或者 `CreateInstance` 没有正确创建所需类型的实例。
+
+    - 由于你看到了 "Failed to create request type" 的错误信息，这意味着类型断言失败了。这可能是因为：
+        1. `CreateInstance` 方法没有返回一个类型为 `T` 的实例。
+        2. `CreateInstance` 方法的实现中可能有错误。
+        3. 在 `handlerWrapper` 中使用的类型参数 `T` 和 `CreateInstance` 返回的类型不匹配。
+
+    - 为了解决这个问题，你需要确保每个实现了 `Requester` 接口的类型在其 `CreateInstance` 方法中返回正确类型的实例。这通常意味着返回该类型的指针，因为 `Decode` 方法需要能够修改实例。
+
 
 # 踩的坑
 
