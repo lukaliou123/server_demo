@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	// controller层路径
+	// RouteDownload controller层路径
 	RouteDownload = "/download/"
 	RouteFile     = "/file/"
 
@@ -29,7 +29,7 @@ const (
 func main() {
 
 	// 类似springboot中的controller层
-	http.HandleFunc("/upload", uploadFileHandler)                      // 上传文件
+	http.HandleFunc("/upload", handlerWrapper("POST", UploadFile))     // 上传文件
 	http.HandleFunc("/download/", handlerWrapper("GET", DownloadFile)) // 处理文件下载
 	http.HandleFunc("/files", handlerWrapper("GET", listFiles))        // 列出文件  也可以添加附加功能，如http.HandleFunc("/files", handlerWrapper(listFiles，“GET”))
 	http.HandleFunc("/file/", handlerWrapper("GET", viewFile))         // 查看特定文件的详情
@@ -126,27 +126,20 @@ func handlerWrapper[T Requester, U Responder](method string, f func(T) (U, error
 	}
 }
 
-// 上传文件功能
+// UploadFile 上传文件功能
 // 一般来说，接口可以直接调用，然而结构体要用地址值，以免直接调用会导致每次使用调用结构体
 // 通过使用指针（即*http.Request），可以确保所有函数都使用相同请求实例。
 // 这对于修改请求的状态或内容是必要的，如设置请求头、改变请求的URL等
-func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
-	// 只接受POST请求
-	if !checkRequestMethod(w, r, "POST") {
-		return
-	}
-
-	// 解析上传的文件
+func UploadFile(req *UploadFileReq) (*UploadResponse, error) {
+	r := req.Request
 	err := r.ParseMultipartForm(10 << 20) // 表示10*2^20，也就是10MB，这里表示限制上传大小10MB
 	if err != nil {
-		sendJSONResponse(w, http.StatusBadRequest, ErrResponse{Msg: errorBadRequest})
-		return
+		return nil, &ErrResponse{Msg: errorBadRequest}
 	}
 
 	file, handler, err := r.FormFile("myFile") // file为文件本身，handler表示这个文件的一些元数据,如文件名
 	if err != nil {
-		sendJSONResponse(w, http.StatusBadRequest, ErrResponse{Msg: errorBadRequest})
-		return
+		return nil, &ErrResponse{Msg: errorBadRequest}
 	}
 
 	defer file.Close() // 关闭文件
@@ -155,30 +148,21 @@ func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
 	filePath := filepath.Join(uploadPath, handler.Filename) // 自动处理字段为路径
 	destination, err := os.Create(filePath)                 // 创建这个路径的文件
 	if err != nil {
-		sendJSONResponse(w, http.StatusInternalServerError, ErrResponse{Msg: errorInternal}) // 这里如果出现上传错误，是服务器，也就是500
-		return
+		return nil, &ErrResponse{Msg: errorInternal} // 这里如果出现上传错误，是服务器，也就是500
 	}
 	defer destination.Close() // 关闭路径
 
-	_, err = destination.ReadFrom(file) // 表示将file文件流复制给destination
-	if err != nil {
-		sendJSONResponse(w, http.StatusInternalServerError, ErrResponse{Msg: errorInternal})
-		return
-	}
-
-	response := UploadResponse{
+	return &UploadResponse{
 		Message:  "File uploaded successfully",
 		FilePath: filePath,
-	}
-
-	sendJSONResponse(w, http.StatusOK, response)
-
+	}, nil
 }
+
 func DownloadFile(req *DownloadFileReq) (*DownloadResponse, error) {
 	// 检查文件是否存在
 	_, err := os.Stat(req.FilePath)
 	if err != nil {
-		return nil, &ErrResponse{Msg: errorInternal}
+		return nil, &ErrResponse{Msg: errorStateNotFound}
 	}
 
 	return &DownloadResponse{

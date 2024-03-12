@@ -21,6 +21,9 @@ type (
 		FilePath string `json:"filePath"`
 		Request  *http.Request
 	}
+	UploadFileReq struct {
+		Request *http.Request
+	}
 )
 
 // Decode ViewFileReq 实现 Requester 接口
@@ -66,4 +69,15 @@ func (req *DownloadFileReq) Decode(r *http.Request) error {
 // CreateInstance 创建一个新的DownloadFileReq，使其不为nil
 func (req *DownloadFileReq) CreateInstance() Requester {
 	return new(DownloadFileReq)
+}
+
+// Decode UploadFileReq 实现 Requester 接口
+func (req *UploadFileReq) Decode(r *http.Request) error {
+	req.Request = r
+	return nil
+}
+
+// CreateInstance 创建一个新的UploadFileReq，使其不为nil
+func (req *UploadFileReq) CreateInstance() Requester {
+	return new(UploadFileReq)
 }
